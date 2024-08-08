@@ -1,12 +1,16 @@
-# Image Processing Utils
+# Image Processing Utilities
 
-对图像进行处理和编辑的封装函数，包括图像叠加、裁剪和其他常见操作。
+[简体中文](./README_ZH.md)|英文
 
-## 实现
+A collection of encapsulated functions for processing and editing images, including image overlay, cropping, and other common operations.
 
-- **简单叠加**: 在一张图像上叠加另一张图像，支持简单的位置调整。
-- **高级叠加**: 提供了更多选项，包括位置调整、旋转和翻转等。
-- **Alpha 通道裁剪**: 基于图像的 Alpha 通道进行裁剪，可用于提取不规则形状的图像。
+## Implementation
+
+- **Simple Overlay**: Overlay one image on top of another, with support for simple positional adjustments.
+- **Advanced Overlay**: Offers more options, including positional adjustments, rotation, and flipping.
+- **Image Transformation**: Includes extracting a mask image from a numpy array with a transparent channel and corresponding image extraction.
+- **Alpha Channel Cropping**: Crop an image based on its alpha channel, cutting out a regular image according to the maximum edge of the non-transparent image.
+
 
 
 

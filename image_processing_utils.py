@@ -1,4 +1,6 @@
 import base64
+import os
+
 from PIL import Image, ImageOps
 import cv2
 import numpy as np
@@ -8,8 +10,10 @@ from typing import Union, Optional
 def crop_image_by_alpha_channel(
         input_image: Optional[Union[str, Image.Image, np.ndarray]] = None,
         base64_image: Optional[str] = None,
-        output_path: Optional[str] = None
-) -> str:
+        output_path: Optional[str] = None,
+        file_format: Optional[str] = None,
+        return_np: Optional[bool] = False,
+) -> Union[str, np.ndarray]:
     """
     Crop an image based on its alpha channel.
 
@@ -17,9 +21,10 @@ def crop_image_by_alpha_channel(
     - input_image: Path to the image, PIL Image object, or NumPy array.
     - base64_image: Optional, base64 encoded image data.
     - output_path: Path to save the cropped image.
+    - return_np: (True) If you want the result as a numpy array, return it directly. Default is False.
 
     Returns:
-    - Path where the cropped image is saved.
+    - The path where the cropped image is saved, or the numpy array of the cropped image if `return_np` is True.
     """
     if base64_image is not None:
         img_data = base64.b64decode(base64_image)
@@ -54,8 +59,106 @@ def crop_image_by_alpha_channel(
 
     if output_path is None:
         raise ValueError("Output path must be provided")
-    cv2.imencode('.png', cropped_img_array)[1].tofile(output_path)
+
+    if return_np:
+        return cropped_img_array
+
+    # Check the file extension of the output path
+    _, file_extension = os.path.splitext(output_path)
+    if format:
+        file_extension = file_format if file_format.startswith('.') else '.'+file_format
+    else:
+        file_extension = file_extension
+
+    # If the output format does not support transparency, convert to BGR
+    if file_extension.lower() != '.png':
+        cropped_img_array = cv2.cvtColor(cropped_img_array, cv2.COLOR_BGRA2BGR)
+
+    cv2.imencode(file_extension.lower(), cropped_img_array)[1].tofile(output_path)
     return output_path
+
+
+def apply_mask_and_save_images(input_image, mask, file_path, cropped_images=False):
+    """
+    Apply a mask to an image and save the image.
+
+    Parameters:
+    input_image (str, numpy.ndarray, or PIL.Image): The original image as a file path, a numpy array, or a PIL image object.
+    mask (numpy.ndarray): The mask to apply to the image, where non-zero values indicate areas to keep.
+    file_path (str): The full file path, including the filename and extension, where the result will be saved.
+    cropped_images (bool, optional): If True, crop the image to the area defined by the mask. Defaults to False.
+    """
+
+    # Ensure the directory for the file exists
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    if isinstance(input_image, str):
+        original_image_np = Image.open(input_image)
+    elif isinstance(input_image, np.ndarray):
+        original_image_np = Image.fromarray(input_image)
+    elif isinstance(input_image, Image.Image):
+        original_image_np = input_image
+    else:
+        raise TypeError("input_image must be a file path, a numpy array, or a PIL Image object")
+
+    # Convert the original image to an RGBA PIL image object
+    original_image = Image.fromarray(original_image_np)
+    original_image.putalpha(255)  # Ensure the original image has an alpha channel set to opaque
+
+    # Ensure the mask is two-dimensional
+    if len(mask.shape) == 3:
+        mask = mask[:, :, 0]  # If it's a 3D array, take the first channel
+
+    # Create a mask image where True corresponds to opaque (255) and False to transparent (0)
+    mask_image = Image.fromarray((mask * 255).astype(np.uint8), 'L').convert('L')
+    mask_image = mask_image.point(lambda p: p > 0 and 255)  # Set non-zero values to 255 for opacity
+
+    # Apply the mask to the original image, making areas outside the mask transparent
+    original_image_with_mask = original_image.copy()
+    original_image_with_mask.putalpha(mask_image)
+
+    if cropped_images:
+        img_array = np.array(original_image_with_mask)
+        crop_image_by_alpha_channel(input_image=img_array, output_path=file_path)
+    else:
+        original_image_with_mask.save(file_path)
+
+
+def save_boolean_mask(mask: np.ndarray, file_path: str, crop: bool = False, invert: bool = False) -> None:
+    """
+    Saves a boolean mask as an image file, with options to crop and invert the mask colors.
+
+    Parameters:
+      mask (np.ndarray): A boolean mask array with shape (H, W).
+      file_path (str): The file path where the image will be saved.
+      crop (bool): Whether to crop to the mask's bounding box.
+      invert (bool): Whether to invert the mask colors, where True makes the non-masked part black and the masked part transparent.
+    """
+    # Convert the boolean mask to an 8-bit grayscale image, where True corresponds to 255 and False to 0
+    gray_image = Image.fromarray((mask * 255).astype(np.uint8), 'L')
+
+    if crop:
+        # Convert the grayscale image to RGBA and add a fully transparent alpha channel
+        gray_image_with_alpha = Image.new('RGBA', gray_image.size, (255, 255, 255, 0))
+        gray_image_with_alpha.paste(gray_image, mask=gray_image)
+
+        # Convert the PIL image to a numpy array for cropping
+        img_array = np.array(gray_image_with_alpha)
+        img_array = crop_image_by_alpha_channel(img_array, return_np=True)
+
+        # Convert the cropped numpy array back to a PIL image
+        cropped_image = Image.fromarray(img_array, 'RGBA')
+    else:
+        # Convert the grayscale image to RGBA without cropping
+        cropped_image = gray_image.convert('RGBA')
+
+    if invert:
+        black_background = Image.new('RGBA', cropped_image.size, (0, 0, 0, 255))
+        final_image = Image.alpha_composite(black_background, cropped_image)
+    else:
+        final_image = cropped_image
+
+    final_image.save(file_path)
 
 
 def overlay_layer(
