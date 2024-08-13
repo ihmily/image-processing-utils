@@ -11,7 +11,7 @@ def crop_image_by_alpha_channel(
         input_image: Optional[Union[str, Image.Image, np.ndarray]] = None,
         base64_image: Optional[str] = None,
         output_path: Optional[str] = None,
-        file_format: Optional[str] = None,
+        file_format: Optional[str] = 'png',
         return_np: Optional[bool] = False,
 ) -> Union[str, np.ndarray]:
     """
@@ -57,15 +57,15 @@ def crop_image_by_alpha_channel(
     x, y, w, h = bbox
     cropped_img_array = img_array[y:y + h, x:x + w]
 
-    if output_path is None:
-        raise ValueError("Output path must be provided")
-
     if return_np:
         return cropped_img_array
 
+    if output_path is None:
+        raise ValueError("Output path must be provided")
+
     # Check the file extension of the output path
     _, file_extension = os.path.splitext(output_path)
-    if format:
+    if file_format:
         file_extension = file_format if file_format.startswith('.') else '.'+file_format
     else:
         file_extension = file_extension
@@ -73,6 +73,8 @@ def crop_image_by_alpha_channel(
     # If the output format does not support transparency, convert to BGR
     if file_extension.lower() != '.png':
         cropped_img_array = cv2.cvtColor(cropped_img_array, cv2.COLOR_BGRA2BGR)
+    else:
+        cropped_img_array = cv2.cvtColor(cropped_img_array, cv2.COLOR_BGRA2RGBA)
 
     cv2.imencode(file_extension.lower(), cropped_img_array)[1].tofile(output_path)
     return output_path
